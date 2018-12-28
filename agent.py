@@ -12,11 +12,12 @@ import shutil
 
 class SuccessorOptionsAgent:
 
-    def __init__(self, env_name, alpha, gamma, rollout_samples, options_count):
+    def __init__(self, env_name, alpha, gamma, rollout_samples, options_count, option_learning_steps):
         self.alpha = alpha
         self.gamma = gamma
         self.env = gym.make(env_name)
         self.rollout_samples = rollout_samples
+        self.option_learning_steps = option_learning_steps
         self.options_count = options_count
         self.viz = Visualizations(env=self.env)
 
@@ -32,6 +33,10 @@ class SuccessorOptionsAgent:
             return None
 
         return np.load(path)
+
+    @staticmethod
+    def _log(msg):
+        print(msg)
 
     def update_sr(self, sr, state, prev_state):
 
@@ -88,6 +93,44 @@ class SuccessorOptionsAgent:
 
         return new_sr
 
+    def learn_option_q(self, sr, subgoal_state, steps):
+
+        lr = 0.25
+        gamma = 0.99
+        eps = 0.3
+
+        # initialize all Q-values to zero
+        q = np.zeros((self.env.states_count, self.env.action_space.n))
+
+        prev_state = self.env.reset()
+
+        for _ in tqdm(range(steps)):
+
+            if random.random() < eps:
+                # take random actions in the environment
+                action = random.randint(0, self.env.action_space.n-1)
+            else:
+                # take greedy action
+                action = np.random.choice(np.flatnonzero(q[prev_state] == q[prev_state].max()))
+
+            state, _, _, _ = self.env.step(action)
+
+            # use the learned SR of the subgoal-state as intrinsic reward
+            reward = sr[state]-sr[prev_state]
+
+            # update the q-value (in a TD-fashion)
+            best_future_value = np.max(q[state])
+            q[prev_state][action] += lr*(reward+gamma*best_future_value-q[prev_state][action])
+
+            if state == subgoal_state:
+                # the goal was found
+                prev_state = self.env.reset()
+            else:
+                # not final state, continue
+                prev_state = state
+
+        return q
+
     def run(self, iterations):
 
         initial_sr_filename = "initial_sr.npy"
@@ -97,7 +140,7 @@ class SuccessorOptionsAgent:
             sr = self._load_array(initial_sr_filename)
 
             if sr is None:
-                # run the policy (completly random) for the first time
+                # run the policy (completely random) for the first time
                 sr = self.run_policy(eps=1, sr=None, steps=self.rollout_samples)
 
                 # save the result, so next time no need to do this again
@@ -115,6 +158,29 @@ class SuccessorOptionsAgent:
 
             self.viz.visualize_subgoals(subgoal_states)
 
+            # learn option-policies that lead to the subgoal-states
+            # this q-table also contains values for running primary actions
+            q = np.zeros(shape=(self.env.grid_size, self.env.grid_size, self.env.action_space.n+self.options_count))
+
+            option_policies_filename = "option_policies.npy"
+            option_policies = self._load_array(option_policies_filename)
+
+            if option_policies is None:
+
+                option_policies = []
+
+                for subgoal_state in subgoal_states:
+                    state_sr = sr[subgoal_state]
+                    option_q = self.learn_option_q(sr=state_sr, subgoal_state=subgoal_state, steps=self.option_learning_steps)
+                    option_policies.append(option_q)
+
+                self._save_array(option_policies, option_policies_filename)
+
+            # visualize the learned or the loaded policies for the options
+        for option_id, subgoal_state in enumerate(subgoal_states):
+                self.viz.visualize_policy(option_policies[option_id], subgoal_state)
+
+
             print(subgoal_states)
 
 
@@ -127,7 +193,7 @@ parser.add_argument('--options_count', default=4)
 parser.add_argument('--iterations', default=1)
 parser.add_argument('--env', default="FourRoom-v0")
 parser.add_argument('--rollout_samples', default=int(5e6))
-parser.add_argument('--option_learn_steps', default=int(1e6))
+parser.add_argument('--option_learning_steps', default=int(1e6))
 DATA_DIR = "data"
 
 args = parser.parse_args()
@@ -136,5 +202,11 @@ if args.reset:
     shutil.rmtree(DATA_DIR)
     os.makedirs(DATA_DIR)
 
-so = SuccessorOptionsAgent(env_name=args.env, alpha=args.alpha, gamma=args.gamma, rollout_samples=args.rollout_samples, options_count=args.options_count)
+so = SuccessorOptionsAgent(env_name=args.env,
+                           alpha=args.alpha,
+                           gamma=args.gamma,
+                           rollout_samples=args.rollout_samples,
+                           options_count=args.options_count,
+                           option_learning_steps=args.option_learning_steps)
+
 so.run(iterations=args.iterations)

@@ -66,6 +66,33 @@ class Visualizations:
             for col in range(len(map[0])):
 
                 if self.env.grid[row][col] is not self.env.WALL_TILE:
-                    plt.text(row, col, round(map[row][col], 3), color='w', ha="center", va="center")
+                    plt.text(y=row, x=col, s=round(map[row][col], 3), color='w', ha="center", va="center")
 
         plt.show()
+
+    def visualize_policy(self, q, subgoal_state):
+
+        grid = copy.deepcopy(self.env.grid)
+
+        policy = np.zeros(shape=(self.env.grid_size, self.env.grid_size), dtype=int)
+
+        # get the index of the highest action-value for each state
+        for state, action_values in enumerate(q):
+            position = self.env._state_to_position(state)
+            policy[position[0]][position[1]] = np.argmax(action_values)
+
+        # give the subgoal state a color on the map
+        subgoal_position = self.env._state_to_position(subgoal_state)
+        grid[subgoal_position[0]][subgoal_position[1]] = 3
+
+        plt.imshow(grid)
+
+        for row in range(len(policy)):
+            for col in range(len(policy[0])):
+
+                if self.env.grid[row][col] is not self.env.WALL_TILE:
+                    plt.text(y=row, x=col, s=self.env._action_meaning[policy[row][col]], color='w', ha="center", va="center")
+
+        plt.title("Learned policy for option")
+        plt.show()
+

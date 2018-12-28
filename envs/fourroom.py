@@ -14,6 +14,7 @@ class FourRoomEnv(gym.Env):
 
         # action-space
         self._action_set = [[-1, 0], [0, -1], [1, 0], [0, 1]]
+        self._action_meaning = ["^", "<", "v", ">"]
         self.action_space = Discrete(len(self._action_set))
 
         self.room_size = 5
