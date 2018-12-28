@@ -131,6 +131,66 @@ class SuccessorOptionsAgent:
 
         return q
 
+    @staticmethod
+    def smdp_td_update(q, state, prev_state, action, reward):
+
+        lr = 0.25
+        gamma = 0.99
+
+        best_future_value = np.max(q[state])
+        q[prev_state][action] += lr*(reward+gamma*best_future_value-q[prev_state][action])
+
+    def run_smdp(self, option_policies, goal_state, subgoal_states, episodes):
+
+        eps = 0.1
+        action_option_dist = 1 # 1 = more actions, 0 = only options
+
+        # learn option-policies that lead to the subgoal-states
+        # this q-table also contains values for running primary actions options [0-n][prim actions]
+        q = np.zeros(shape=(self.env.grid_size, self.env.grid_size, self.env.action_space.n + self.options_count))
+
+        for _ in range(episodes):
+
+            prev_state = self.env.reset()
+
+            for episode_step in range(int(1e6)):
+
+                if random.random() < eps:
+                    # do something random
+
+                    if random.random() < action_option_dist:
+                        # follow random action
+                        action = random.randint(self.options_count-1, self.env.action_space.n - 1)
+                        state, _, _, _ = self.env.step(action)
+
+                        if state == goal_state:
+                            reward = 1
+                        else:
+                            reward = 0
+
+                        self.smdp_td_update(q, state, prev_state, action, reward)
+
+                    else:
+                        # follow random option
+                        option = random.randint(0, self.options_count-1)
+
+                        # TODO: follow option
+                else:
+                    # greedy actions
+                    greedy_action = np.random.choice(np.flatnonzero(q[prev_state] == q[prev_state].max()))
+
+                    if greedy_action < self.options_count:
+                        # use option
+                        sel_option = greedy_action
+                    else:
+                        # use primary action
+                        sel_action = greedy_action - self.options_count-1
+                        state, _, _, _ = self.env.step(sel_action)
+
+
+
+                prev_state = state
+
     def run(self, iterations):
 
         initial_sr_filename = "initial_sr.npy"
@@ -158,10 +218,6 @@ class SuccessorOptionsAgent:
 
             self.viz.visualize_subgoals(subgoal_states)
 
-            # learn option-policies that lead to the subgoal-states
-            # this q-table also contains values for running primary actions
-            q = np.zeros(shape=(self.env.grid_size, self.env.grid_size, self.env.action_space.n+self.options_count))
-
             option_policies_filename = "option_policies.npy"
             option_policies = self._load_array(option_policies_filename)
 
@@ -177,8 +233,11 @@ class SuccessorOptionsAgent:
                 self._save_array(option_policies, option_policies_filename)
 
             # visualize the learned or the loaded policies for the options
-        for option_id, subgoal_state in enumerate(subgoal_states):
+            for option_id, subgoal_state in enumerate(subgoal_states):
                 self.viz.visualize_policy(option_policies[option_id], subgoal_state)
+
+            # run the SMDP
+            self.run_smdp(option_policies=option_policies, goal_state=subgoal_states[3], subgoal_states=subgoal_states)
 
 
             print(subgoal_states)
