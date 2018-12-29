@@ -70,7 +70,7 @@ class Visualizations:
 
         plt.show()
 
-    def visualize_policy(self, q, subgoal_state):
+    def visualize_policy(self, q, subgoal_state, action_meaning, id):
 
         grid = copy.deepcopy(self.env.grid)
 
@@ -91,8 +91,8 @@ class Visualizations:
             for col in range(len(policy[0])):
 
                 if self.env.grid[row][col] is not self.env.WALL_TILE:
-                    plt.text(y=row, x=col, s=self.env._action_meaning[policy[row][col]], color='w', ha="center", va="center")
+                    plt.text(y=row, x=col, s=action_meaning[policy[row][col]], color='w', ha="center", va="center")
 
-        plt.title("Learned policy for option")
+        plt.title(f"Learned policy for {id}")
         plt.show()
 
