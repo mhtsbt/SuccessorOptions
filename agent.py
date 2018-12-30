@@ -142,10 +142,10 @@ class SuccessorOptionsAgent:
     def run_smdp(self, option_policies, goal_state, subgoal_states, episodes):
 
         eps = 0.1
-        action_option_dist = 0.5  # 1 = more actions, 0 = only options
+        action_option_dist = 0.8  # 1 = more actions, 0 = only options
 
         # learn option-policies that lead to the subgoal-states
-        # this q-table also contains values for running primary actions options [0-n][prim actions]
+        # this q-table also contains values for running primary actions options [prim actions][options]
         q = np.zeros(shape=(self.env.states_count, self.env.action_space.n + self.options_count))
 
         for _ in range(episodes):
@@ -160,27 +160,32 @@ class SuccessorOptionsAgent:
 
                     if random.random() < action_option_dist:
                         # follow random action
-                        primary_action = random.randint(0, self.env.action_space.n - 1)
-                        state, _, _, _ = self.env.step(primary_action)
+                        action = random.randint(0, self.env.action_space.n - 1)
+                        state, _, _, _ = self.env.step(action)
                         episode_step += 1
-                        action = primary_action+self.options_count-1
                     else:
                         # follow random option
-                        action = random.randint(0, self.options_count-1)
-                        state, steps_used = self.follow_option_policy(prev_state, option_q=option_policies[action], option_subgoal_state=subgoal_states[action])
+                        option = random.randint(0, self.options_count-1)
+                        state, steps_used = self.follow_option_policy(prev_state, option_q=option_policies[option], option_subgoal_state=subgoal_states[option])
                         episode_step += steps_used
+                        action = option+self.env.action_space.n
                 else:
                     # greedy actions
-                    action = np.random.choice(np.flatnonzero(q[prev_state] == q[prev_state].max()))
+                    if action_option_dist == 1:
+                        # only use primary actions
+                        action = np.random.choice(np.flatnonzero(q[prev_state][0:self.env.action_space.n-1] == q[prev_state][0:self.env.action_space.n-1].max()))
+                    else:
+                        # use both action and options
+                        action = np.random.choice(np.flatnonzero(q[prev_state] == q[prev_state].max()))
 
-                    if action < self.options_count:
+                    if action >= self.options_count:
                         # use option
-                        state, steps_used = self.follow_option_policy(prev_state, option_q=option_policies[action], option_subgoal_state=subgoal_states[action])
+                        option = action-self.env.action_space.n
+                        state, steps_used = self.follow_option_policy(prev_state, option_q=option_policies[option], option_subgoal_state=subgoal_states[option])
                         episode_step += steps_used
                     else:
                         # use primary action
-                        primary_action = action - self.options_count-1
-                        state, _, _, _ = self.env.step(primary_action)
+                        state, _, _, _ = self.env.step(action)
                         episode_step += 1
 
                 # TD-update
@@ -266,10 +271,12 @@ class SuccessorOptionsAgent:
 
             # run the SMDP
             end_goal = subgoal_states[3]+2
-            smdp_q = self.run_smdp(option_policies=option_policies, goal_state=end_goal, subgoal_states=subgoal_states, episodes=100)
+            smdp_q = self.run_smdp(option_policies=option_policies, goal_state=end_goal, subgoal_states=subgoal_states, episodes=10000)
+
+            print(smdp_q[end_goal-1])
 
             # vizualize the learned policy
-            action_meaning_smdp = ["O1", "O2", "O3", "O4", "^", "<", "v", ">"] # TODO: make dynamic
+            action_meaning_smdp = ["^", "<", "v", ">", "O1", "O2", "O3", "O4"] # TODO: make dynamic
             self.viz.visualize_policy(smdp_q, end_goal, action_meaning=action_meaning_smdp, id="SMDP")
 
 
