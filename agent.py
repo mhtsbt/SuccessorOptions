@@ -144,6 +144,9 @@ class SuccessorOptionsAgent:
         eps = 0.1
         action_option_dist = 0.8  # 1 = more actions, 0 = only options
 
+        # prepare the SR
+        new_sr = np.zeros(shape=(self.env.states_count, self.env.states_count))
+
         # learn option-policies that lead to the subgoal-states
         # this q-table also contains values for running primary actions options [prim actions][options]
         q = np.zeros(shape=(self.env.states_count, self.env.action_space.n + self.options_count))
@@ -202,7 +205,7 @@ class SuccessorOptionsAgent:
 
                 prev_state = state
 
-        return q
+        return q, new_sr
 
     def follow_option_policy(self, state, option_q, option_subgoal_state):
 
@@ -227,16 +230,18 @@ class SuccessorOptionsAgent:
 
         initial_sr_filename = "initial_sr.npy"
 
+        # first time get some random samples from the environment
+        # if we did this before, re-use the SR
+        sr = self._load_array(initial_sr_filename)
+
+        if sr is None:
+            # run the policy (completely random) for the first time
+            sr = self.run_policy(eps=1, sr=None, steps=self.rollout_samples)
+
+            # save the result, so next time no need to do this again
+            self._save_array(sr, initial_sr_filename)
+
         for _ in range(iterations):
-            # if we did this before, re-use the SR
-            sr = self._load_array(initial_sr_filename)
-
-            if sr is None:
-                # run the policy (completely random) for the first time
-                sr = self.run_policy(eps=1, sr=None, steps=self.rollout_samples)
-
-                # save the result, so next time no need to do this again
-                self._save_array(sr, initial_sr_filename)
 
             # do the clustering, to find the subgoals
             sr_clusters = self.cluster_sr(sr)
@@ -271,7 +276,7 @@ class SuccessorOptionsAgent:
 
             # run the SMDP
             end_goal = subgoal_states[3]+2
-            smdp_q = self.run_smdp(option_policies=option_policies, goal_state=end_goal, subgoal_states=subgoal_states, episodes=10000)
+            smdp_q, sr = self.run_smdp(option_policies=option_policies, goal_state=end_goal, subgoal_states=subgoal_states, episodes=10000)
 
             print(smdp_q[end_goal-1])
 
