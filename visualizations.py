@@ -1,12 +1,17 @@
 import copy
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 
 
 class Visualizations:
 
-    def __init__(self, env):
+    def __init__(self, env, data_dir):
         self.env = env
+        self.data_dir = data_dir
+
+        self.show_plots = False
+        self.save_plots = True
 
     def visualize_subgoals(self, subgoal_states):
 
@@ -16,9 +21,15 @@ class Visualizations:
             goal = self.env._state_to_position(goal_state)
             grid_with_subgoals[goal[0]][goal[1]] = 10
 
+
         plt.title("Subgoal visualization")
         plt.imshow(grid_with_subgoals)
-        plt.show()
+
+        if self.show_plots:
+            plt.show()
+
+        if self.save_plots:
+            plt.savefig(os.path.join(self.data_dir, "subgoals.png"))
 
     def visualize_sr_state(self, sr):
 
@@ -28,9 +39,15 @@ class Visualizations:
             position = self.env._state_to_position(state)
             result[position[0]][position[1]] = value
 
+        plt.figure(figsize=(self.env.grid_size / 2, self.env.grid_size / 2))
         plt.title("SR for state")
         plt.imshow(result)
-        plt.show()
+
+        if self.show_plots:
+            plt.show()
+
+        if self.save_plots:
+            plt.savefig(os.path.join(self.data_dir, "sr_state.png"))
 
     def _build_reward_map(self, sr):
 
@@ -57,18 +74,38 @@ class Visualizations:
     def visualize_env(self):
         plt.title("Environment grid")
         plt.imshow(self.env.grid)
-        plt.show()
+
+        if self.show_plots:
+            plt.show()
+
+        if self.save_plots:
+            plt.savefig(os.path.join(self.data_dir, "env.png"))
+
+    def visualize_policy_learning_curve(self, history):
+        plt.title("Policy learning curve")
+        plt.plot(history)
+
+        if self.show_plots:
+            plt.show()
+
+        if self.save_plots:
+            plt.savefig(os.path.join(self.data_dir, "learning_curve.png"))
 
     def visualize_sr(self, sr):
         plt.title("SR visualization")
         plt.imshow(sr)
-        plt.show()
+
+        if self.show_plots:
+            plt.show()
+
+        if self.save_plots:
+            plt.savefig(os.path.join(self.data_dir, "sr.png"))
 
     def visualize_subgoal_reward_map(self, sr):
 
         map = self._build_reward_map(sr)
 
-        plt.figure(figsize=(10, 10))
+        plt.figure(figsize=(self.env.grid_size / 2, self.env.grid_size / 2))
         plt.imshow(map)
         plt.title("Reward map for subgoal")
 
@@ -78,11 +115,17 @@ class Visualizations:
                 if self.env.grid[row][col] is not self.env.WALL_TILE:
                     plt.text(y=row, x=col, s=round(map[row][col], 3), color='w', ha="center", va="center")
 
-        plt.show()
+        if self.show_plots:
+            plt.show()
+
+        if self.save_plots:
+            plt.savefig(os.path.join(self.data_dir, "subgoal_reward_map.png"))
 
     def visualize_policy(self, q, subgoal_state, action_meaning, id):
 
         grid = copy.deepcopy(self.env.grid)
+
+        plt.figure(figsize=(self.env.grid_size/2, self.env.grid_size/2))
 
         policy = np.zeros(shape=(self.env.grid_size, self.env.grid_size), dtype=int)
 
@@ -100,9 +143,13 @@ class Visualizations:
         for row in range(len(policy)):
             for col in range(len(policy[0])):
 
-                if self.env.grid[row][col] is not self.env.WALL_TILE:
+                if self.env.grid[row][col] != self.env.WALL_TILE:
                     plt.text(y=row, x=col, s=action_meaning[policy[row][col]], color='w', ha="center", va="center")
 
         plt.title(f"Learned policy for {id}")
-        plt.show()
 
+        if self.show_plots:
+            plt.show()
+
+        if self.save_plots:
+            plt.savefig(os.path.join(self.data_dir, f"policy_{id}.png"))

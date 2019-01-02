@@ -20,7 +20,7 @@ class SuccessorOptionsAgent:
         self.rollout_samples = rollout_samples
         self.option_learning_steps = option_learning_steps
         self.options_count = options_count
-        self.viz = Visualizations(env=self.env)
+        self.viz = Visualizations(env=self.env, data_dir=DATA_DIR)
 
     @staticmethod
     def _save_array(array, filename):
@@ -145,6 +145,7 @@ class SuccessorOptionsAgent:
 
         eps = 0.1
         action_option_dist = 0.8  # 1 = more actions, 0 = only options
+        history = []
 
         # prepare the SR
         new_sr = np.zeros(shape=(self.env.states_count, self.env.states_count))
@@ -203,9 +204,12 @@ class SuccessorOptionsAgent:
 
                 if state == goal_state:
                     self._log(f"Found the end-goal in {episode_step} steps!")
+                    history.append(episode_step)
                     break
 
                 prev_state = state
+
+        self.viz.visualize_policy_learning_curve(history)
 
         return q, new_sr
 
@@ -281,10 +285,10 @@ class SuccessorOptionsAgent:
                 self.viz.visualize_policy(option_policies[option_id], subgoal_state, action_meaning=self.env._action_meaning, id="Option "+str(option_id+1))
 
             # run the SMDP
-            end_goal = subgoal_states[3]+2
-            smdp_q, sr = self.run_smdp(option_policies=option_policies, goal_state=end_goal, subgoal_states=subgoal_states, episodes=10000)
-
-            print(smdp_q[end_goal-1])
+            # TODO: check that this is not a wall-tile
+            #end_goal = subgoal_states[3]+2
+            end_goal = subgoal_states[3]
+            smdp_q, sr = self.run_smdp(option_policies=option_policies, goal_state=end_goal, subgoal_states=subgoal_states, episodes=100)
 
             # vizualize the learned policy
             action_meaning_smdp = ["^", "<", "v", ">", "O1", "O2", "O3", "O4"] # TODO: make dynamic
