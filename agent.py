@@ -56,15 +56,29 @@ class SuccessorOptionsAgent:
 
         return clusters
 
-    def get_subgoal_states(self, sr, sr_clusters):
+    def get_candidate_subgoals(self, sr):
+
+        sr_sums = np.array([sum(row) for row in sr])
+
+        sr_max, sr_min = np.percentile(sr_sums, [75, 25])
+        valid_states = np.argwhere((sr_sums > sr_min) & (sr_sums < sr_max))
+
+        return valid_states.reshape(len(valid_states))
+
+    def get_subgoal_states(self, sr, sr_clusters, canidate_subgoals):
 
         subgoals_states = []
 
         distances_to_centers = np.zeros((self.env.states_count, len(sr_clusters)))
         for state, srs in enumerate(sr):
 
-            for i in range(len(sr_clusters)):
-                distances_to_centers[state][i] = scipy.spatial.distance.cosine(sr_clusters[i], srs)
+            if state not in canidate_subgoals:
+                # if the state is not a canidate set all distances to 1
+                distances_to_centers[state] = np.ones(shape=(len(sr_clusters)))
+            else:
+                # if it is a valid canidate subgoal, calculate the distance
+                for i in range(len(sr_clusters)):
+                    distances_to_centers[state][i] = scipy.spatial.distance.cosine(sr_clusters[i], srs)
 
         for i in range(len(sr_clusters)):
             state = np.nanargmin(distances_to_centers[:, i])
@@ -144,8 +158,9 @@ class SuccessorOptionsAgent:
     def run_smdp(self, option_policies, goal_state, subgoal_states, episodes):
 
         eps = 0.1
-        action_option_dist = 0.8  # 1 = more actions, 0 = only options
+        action_option_dist = 0.95  # 1 = more actions, 0 = only options
         history = []
+        auc_k = 100
 
         # prepare the SR
         new_sr = np.zeros(shape=(self.env.states_count, self.env.states_count))
@@ -153,6 +168,8 @@ class SuccessorOptionsAgent:
         # learn option-policies that lead to the subgoal-states
         # this q-table also contains values for running primary actions options [prim actions][options]
         q = np.zeros(shape=(self.env.states_count, self.env.action_space.n + self.options_count))
+
+        cum_reward = 0
 
         for _ in range(episodes):
 
@@ -169,6 +186,7 @@ class SuccessorOptionsAgent:
                         action = random.randint(0, self.env.action_space.n - 1)
                         state, _, _, _ = self.env.step(action)
                         episode_step += 1
+                        self.update_sr(sr=new_sr, state=state, prev_state=prev_state)
                     else:
                         # follow random option
                         option = random.randint(0, self.options_count-1)
@@ -187,11 +205,12 @@ class SuccessorOptionsAgent:
                     if action >= self.options_count:
                         # use option
                         option = action-self.env.action_space.n
-                        state, steps_used = self.follow_option_policy(prev_state, option_q=option_policies[option], option_subgoal_state=subgoal_states[option])
+                        state, steps_used = self.follow_option_policy(prev_state, option_q=option_policies[option], option_subgoal_state=subgoal_states[option], update_sr=new_sr)
                         episode_step += steps_used
                     else:
                         # use primary action
                         state, _, _, _ = self.env.step(action)
+                        self.update_sr(sr=new_sr, state=state, prev_state=prev_state)
                         episode_step += 1
 
                 # TD-update
@@ -204,19 +223,23 @@ class SuccessorOptionsAgent:
 
                 if state == goal_state:
                     self._log(f"Found the end-goal in {episode_step} steps!")
+                    cum_reward += 1
                     history.append(episode_step)
                     break
 
                 prev_state = state
 
+        self._log(f"Total reward for iteration: {cum_reward}")
+
         self.viz.visualize_policy_learning_curve(history)
 
         return q, new_sr
 
-    def follow_option_policy(self, state, option_q, option_subgoal_state):
+    def follow_option_policy(self, state, option_q, option_subgoal_state, update_sr=None):
 
         eps = 0.1
         steps_used = 0
+        prev_state = state
 
         while True:
             if random.random() < eps:
@@ -228,13 +251,23 @@ class SuccessorOptionsAgent:
             state, _, _, _ = self.env.step(action=action)
             steps_used += 1
 
+            if update_sr is not None:
+                # update the SR for the incremental updating
+                self.update_sr(update_sr, state, prev_state)
+
             if state == option_subgoal_state:
                 self._log("Finished using the option after "+str(steps_used)+" steps")
                 return state, steps_used
 
+            prev_state = state
+
     def run(self, iterations):
 
         self.viz.visualize_env()
+
+        # TODO: check that this is not a wall-tile
+        # end_goal = subgoal_states[3]+2
+        end_goal = 0 # TODO
 
         initial_sr_filename = "initial_sr.npy"
 
@@ -251,22 +284,29 @@ class SuccessorOptionsAgent:
 
         self.viz.visualize_sr(sr)
 
-        for _ in range(iterations):
+        for iteration in range(iterations):
+
+            self._log(f"=== Running iteration {iteration} ===")
 
             # do the clustering, to find the subgoals
             sr_clusters = self.cluster_sr(sr)
-            subgoal_states = self.get_subgoal_states(sr, sr_clusters)
+
+            # filter possible subgoal states
+            canidate_subgoals = self.get_candidate_subgoals(sr)
+
+            self.viz.visualize_candidate_subgoals(canidate_subgoals, iteration)
+
+            subgoal_states = self.get_subgoal_states(sr, sr_clusters, canidate_subgoals)
 
             # visualize each of the subgoals SR
             for subgoal_state in subgoal_states:
                 state_sr = sr[subgoal_state]
-                self.viz.visualize_sr_state(state_sr)
-                self.viz.visualize_subgoal_reward_map(state_sr)
+                self.viz.visualize_sr_state(state_sr, subgoal_state, iteration)
+                self.viz.visualize_subgoal_reward_map(state_sr, subgoal_state, iteration)
 
-            self.viz.visualize_subgoals(subgoal_states)
-            self._log(subgoal_states)
+            self.viz.visualize_subgoals(subgoal_states, iteration=iteration)
 
-            option_policies_filename = "option_policies.npy"
+            option_policies_filename = f"option_policies_{iteration}.npy"
             option_policies = self._load_array(option_policies_filename)
 
             if option_policies is None:
@@ -285,14 +325,13 @@ class SuccessorOptionsAgent:
                 self.viz.visualize_policy(option_policies[option_id], subgoal_state, action_meaning=self.env._action_meaning, id="Option "+str(option_id+1))
 
             # run the SMDP
-            # TODO: check that this is not a wall-tile
-            #end_goal = subgoal_states[3]+2
             end_goal = subgoal_states[3]
+
             smdp_q, sr = self.run_smdp(option_policies=option_policies, goal_state=end_goal, subgoal_states=subgoal_states, episodes=100)
 
             # vizualize the learned policy
             action_meaning_smdp = ["^", "<", "v", ">", "O1", "O2", "O3", "O4"] # TODO: make dynamic
-            self.viz.visualize_policy(smdp_q, end_goal, action_meaning=action_meaning_smdp, id="SMDP")
+            self.viz.visualize_policy(smdp_q, end_goal, action_meaning=action_meaning_smdp, id=f"SMDP_{iteration}")
 
 
 # cli arguments
@@ -302,7 +341,7 @@ parser.add_argument('--gamma', default=0.95)
 parser.add_argument('--seed', default=42)
 parser.add_argument('--reset', default=False)
 parser.add_argument('--options_count', default=4)
-parser.add_argument('--iterations', default=1)
+parser.add_argument('--iterations', default=2)
 parser.add_argument('--env', default="FourRoom-v0")
 parser.add_argument('--rollout_samples', default=int(5e6))
 parser.add_argument('--option_learning_steps', default=int(1e6))
@@ -310,7 +349,7 @@ parser.add_argument('--option_learning_steps', default=int(1e6))
 
 args = parser.parse_args()
 
-DATA_DIR = "data_"+args.env
+DATA_DIR = os.path.join("data", f"{args.env}_{args.options_count}")
 
 # set the random seed
 random.seed(args.seed)

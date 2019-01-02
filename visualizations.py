@@ -13,7 +13,7 @@ class Visualizations:
         self.show_plots = False
         self.save_plots = True
 
-    def visualize_subgoals(self, subgoal_states):
+    def visualize_subgoals(self, subgoal_states, iteration):
 
         grid_with_subgoals = copy.deepcopy(self.env.grid)
 
@@ -21,17 +21,17 @@ class Visualizations:
             goal = self.env._state_to_position(goal_state)
             grid_with_subgoals[goal[0]][goal[1]] = 10
 
-
-        plt.title("Subgoal visualization")
+        plt.clf()
+        plt.title(f"Subgoal visualization iteration: {iteration}")
         plt.imshow(grid_with_subgoals)
 
         if self.show_plots:
             plt.show()
 
         if self.save_plots:
-            plt.savefig(os.path.join(self.data_dir, "subgoals.png"))
+            plt.savefig(os.path.join(self.data_dir, f"subgoals_{iteration}.png"))
 
-    def visualize_sr_state(self, sr):
+    def visualize_sr_state(self, sr, state, iteration):
 
         result = np.zeros((self.env.grid_size, self.env.grid_size))
 
@@ -40,14 +40,14 @@ class Visualizations:
             result[position[0]][position[1]] = value
 
         plt.figure(figsize=(self.env.grid_size / 2, self.env.grid_size / 2))
-        plt.title("SR for state")
+        plt.title(f"SR for state {state} iteration {iteration}")
         plt.imshow(result)
 
         if self.show_plots:
             plt.show()
 
         if self.save_plots:
-            plt.savefig(os.path.join(self.data_dir, "sr_state.png"))
+            plt.savefig(os.path.join(self.data_dir, f"sr_state_{state}_{iteration}.png"))
 
     def _build_reward_map(self, sr):
 
@@ -70,6 +70,24 @@ class Visualizations:
                 map[position[0]][position[1]] = np.maximum(reward, current_value)
 
         return map
+
+    def visualize_candidate_subgoals(self, states, iteration):
+
+        # visualize all candidate subgoals
+        grid_copy = copy.deepcopy(self.env.grid)
+
+        for candidate in states:
+            position = self.env._state_to_position(candidate)
+            grid_copy[position[0]][position[1]] = 2
+
+        plt.clf()
+        plt.imshow(grid_copy)
+
+        if self.show_plots:
+            plt.show()
+
+        if self.save_plots:
+            plt.savefig(os.path.join(self.data_dir, f"candidate_subgoals_{iteration}.png"))
 
     def visualize_env(self):
         plt.title("Environment grid")
@@ -103,13 +121,13 @@ class Visualizations:
         if self.save_plots:
             plt.savefig(os.path.join(self.data_dir, "sr.png"))
 
-    def visualize_subgoal_reward_map(self, sr):
+    def visualize_subgoal_reward_map(self, sr, subgoal_state, iteration):
 
         map = self._build_reward_map(sr)
 
         plt.figure(figsize=(self.env.grid_size / 2, self.env.grid_size / 2))
         plt.imshow(map)
-        plt.title("Reward map for subgoal")
+        plt.title(f"Reward map for subgoal state {subgoal_state} iteration {iteration}")
 
         for row in range(len(map)):
             for col in range(len(map[0])):
@@ -121,7 +139,7 @@ class Visualizations:
             plt.show()
 
         if self.save_plots:
-            plt.savefig(os.path.join(self.data_dir, "subgoal_reward_map.png"))
+            plt.savefig(os.path.join(self.data_dir, f"subgoal_reward_map_{subgoal_state}_{iteration}.png"))
 
     def visualize_policy(self, q, subgoal_state, action_meaning, id):
 

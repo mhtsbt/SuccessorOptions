@@ -1,4 +1,4 @@
-data_*/*
+data/**
 __pycache__
 
 # User-specific stuff
