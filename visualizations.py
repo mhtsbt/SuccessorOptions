@@ -82,6 +82,8 @@ class Visualizations:
             plt.savefig(os.path.join(self.data_dir, "env.png"))
 
     def visualize_policy_learning_curve(self, history):
+
+        plt.figure(figsize=(5, 5))
         plt.title("Policy learning curve")
         plt.plot(history)
 
