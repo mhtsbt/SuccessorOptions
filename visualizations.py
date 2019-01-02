@@ -54,6 +54,16 @@ class Visualizations:
 
         return map
 
+    def visualize_env(self):
+        plt.title("Environment grid")
+        plt.imshow(self.env.grid)
+        plt.show()
+
+    def visualize_sr(self, sr):
+        plt.title("SR visualization")
+        plt.imshow(sr)
+        plt.show()
+
     def visualize_subgoal_reward_map(self, sr):
 
         map = self._build_reward_map(sr)

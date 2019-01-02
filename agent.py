@@ -74,6 +74,8 @@ class SuccessorOptionsAgent:
 
     def run_policy(self, eps, sr, steps):
 
+        # TODO: merge with run SMDP
+
         new_sr = np.zeros(shape=(self.env.states_count, self.env.states_count))
 
         # go back to the starting position
@@ -228,6 +230,8 @@ class SuccessorOptionsAgent:
 
     def run(self, iterations):
 
+        self.viz.visualize_env()
+
         initial_sr_filename = "initial_sr.npy"
 
         # first time get some random samples from the environment
@@ -240,6 +244,8 @@ class SuccessorOptionsAgent:
 
             # save the result, so next time no need to do this again
             self._save_array(sr, initial_sr_filename)
+
+        self.viz.visualize_sr(sr)
 
         for _ in range(iterations):
 
@@ -289,15 +295,25 @@ class SuccessorOptionsAgent:
 parser = argparse.ArgumentParser(description='')
 parser.add_argument('--alpha', default=0.1)
 parser.add_argument('--gamma', default=0.95)
+parser.add_argument('--seed', default=42)
 parser.add_argument('--reset', default=False)
 parser.add_argument('--options_count', default=4)
 parser.add_argument('--iterations', default=1)
 parser.add_argument('--env', default="FourRoom-v0")
 parser.add_argument('--rollout_samples', default=int(5e6))
 parser.add_argument('--option_learning_steps', default=int(1e6))
-DATA_DIR = "data"
+
 
 args = parser.parse_args()
+
+DATA_DIR = "data_"+args.env
+
+# set the random seed
+random.seed(args.seed)
+
+# create data dir if it does not exitsts
+if not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR)
 
 if args.reset:
     shutil.rmtree(DATA_DIR)

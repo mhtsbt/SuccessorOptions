@@ -5,6 +5,7 @@ import numpy as np
 
 
 class FourRoomEnv(gym.Env):
+
     metadata = {'render.modes': ['human']}
 
     WALL_TILE = 1
@@ -55,6 +56,9 @@ class FourRoomEnv(gym.Env):
                 grid.append(row)
 
         return grid
+
+    def render(self, mode='human'):
+        pass
 
     def _state_to_position(self, state):
         row = math.floor(state / self.grid_size)
