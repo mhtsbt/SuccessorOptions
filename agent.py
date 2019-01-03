@@ -13,13 +13,14 @@ import shutil
 
 class SuccessorOptionsAgent:
 
-    def __init__(self, env_name, alpha, gamma, rollout_samples, options_count, option_learning_steps):
+    def __init__(self, env_name, alpha, gamma, rollout_samples, options_count, option_learning_steps, action_option_sampling):
         self.alpha = alpha
         self.gamma = gamma
         self.env = gym.make(env_name)
         self.rollout_samples = rollout_samples
         self.option_learning_steps = option_learning_steps
         self.options_count = options_count
+        self.action_option_sampling = action_option_sampling
         self.viz = Visualizations(env=self.env, data_dir=DATA_DIR)
 
     @staticmethod
@@ -56,6 +57,7 @@ class SuccessorOptionsAgent:
 
         return clusters
 
+    # The candidate states are those states which have a moderately developed SR
     def get_candidate_subgoals(self, sr):
 
         sr_sums = np.array([sum(row) for row in sr])
@@ -86,9 +88,7 @@ class SuccessorOptionsAgent:
 
         return subgoals_states
 
-    def run_policy(self, eps, sr, steps):
-
-        # TODO: merge with run SMDP
+    def run_random_policy(self, steps):
 
         new_sr = np.zeros(shape=(self.env.states_count, self.env.states_count))
 
@@ -158,9 +158,7 @@ class SuccessorOptionsAgent:
     def run_smdp(self, option_policies, goal_state, subgoal_states, episodes):
 
         eps = 0.1
-        action_option_dist = 0.95  # 1 = more actions, 0 = only options
         history = []
-        auc_k = 100
 
         # prepare the SR
         new_sr = np.zeros(shape=(self.env.states_count, self.env.states_count))
@@ -181,7 +179,7 @@ class SuccessorOptionsAgent:
                 if random.random() < eps:
                     # do something random
 
-                    if random.random() < action_option_dist:
+                    if random.random() < self.action_option_sampling:
                         # follow random action
                         action = random.randint(0, self.env.action_space.n - 1)
                         state, _, _, _ = self.env.step(action)
@@ -277,7 +275,7 @@ class SuccessorOptionsAgent:
 
         if sr is None:
             # run the policy (completely random) for the first time
-            sr = self.run_policy(eps=1, sr=None, steps=self.rollout_samples)
+            sr = self.run_random_policy(steps=self.rollout_samples)
 
             # save the result, so next time no need to do this again
             self._save_array(sr, initial_sr_filename)
@@ -342,6 +340,7 @@ parser.add_argument('--seed', default=42)
 parser.add_argument('--reset', default=False)
 parser.add_argument('--options_count', default=4)
 parser.add_argument('--iterations', default=2)
+parser.add_argument('--ao_sampling', default=0.95) #  1 = more actions, 0 = more options
 parser.add_argument('--env', default="FourRoom-v0")
 parser.add_argument('--rollout_samples', default=int(5e6))
 parser.add_argument('--option_learning_steps', default=int(1e6))
@@ -354,7 +353,7 @@ DATA_DIR = os.path.join("data", f"{args.env}_{args.options_count}")
 # set the random seed
 random.seed(args.seed)
 
-# create data dir if it does not exitsts
+# create data dir if it does not exists
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
 
@@ -367,6 +366,7 @@ so = SuccessorOptionsAgent(env_name=args.env,
                            gamma=args.gamma,
                            rollout_samples=args.rollout_samples,
                            options_count=args.options_count,
-                           option_learning_steps=args.option_learning_steps)
+                           option_learning_steps=args.option_learning_steps,
+                           action_option_sampling=args.ao_sampling)
 
 so.run(iterations=args.iterations)
