@@ -171,7 +171,7 @@ class SuccessorOptionsAgent:
 
         eps = 0.1
         history = []
-        max_episode_steps = int(1e5)
+        max_episode_steps = int(1e6)
 
         # prepare the SR
         new_sr = np.zeros(shape=(self.env.states_count, self.env.states_count))
@@ -352,7 +352,7 @@ class SuccessorOptionsAgent:
                 start_state = self.env.get_free_rand_state()
                 end_goal = self.env.get_free_rand_state()
 
-                smdp_q, sr, smdp_history = self.run_smdp(option_policies=option_policies, goal_state=end_goal, start_state=start_state, subgoal_states=subgoal_states, episodes=50, action_option_sampling=action_option_sampling)
+                smdp_q, sr, smdp_history = self.run_smdp(option_policies=option_policies, goal_state=end_goal, start_state=start_state, subgoal_states=subgoal_states, episodes=200, action_option_sampling=action_option_sampling)
                 all_smdp_history.append(smdp_history)
 
                 # vizualize the learned policy
@@ -380,7 +380,7 @@ parser.add_argument('--option_learning_steps', default=int(1e6))
 
 args = parser.parse_args()
 
-DATA_DIR = os.path.join("data", f"{args.env}_oc{args.options_count}_alpha{args.alpha}")
+DATA_DIR = os.path.join("data", f"{args.env}_oc{args.options_count}_alpha{args.alpha}_oa{args.ao_sampling}")
 
 # set the random seed
 random.seed(args.seed)
@@ -400,19 +400,22 @@ so = SuccessorOptionsAgent(env_name=args.env,
                            options_count=args.options_count,
                            option_learning_steps=args.option_learning_steps)
 
-smdp_runs = 10
+smdp_runs = 500
 
-plain_q = so.run(iterations=int(args.iterations), smdp_runs=smdp_runs, action_option_sampling=1)
-so_res = so.run(iterations=int(args.iterations), smdp_runs=smdp_runs, action_option_sampling=float(args.ao_sampling))
-so_un = so.run(iterations=int(args.iterations), smdp_runs=smdp_runs, action_option_sampling=0.5)
+learning_history = so.run(iterations=int(args.iterations), smdp_runs=smdp_runs, action_option_sampling=float(args.ao_sampling))
 
-plt.figure(figsize=(5, 5))
-plt.plot(so_un, label='SO UN')
-plt.plot(so_res, label='SO')
-plt.plot(plain_q, label='Q')
-plt.ylim(0, 1000)
+np.save(os.path.join(DATA_DIR, "learning_history.npy"), np.array(learning_history))
 
-plt.legend(loc='upper left')
-plt.xlabel("Episode")
-plt.ylabel("Steps required to reach goal")
-plt.savefig("compared.png")
+#so_res = so.run(iterations=int(args.iterations), smdp_runs=smdp_runs, action_option_sampling=float(args.ao_sampling))
+#so_un = so.run(iterations=int(args.iterations), smdp_runs=smdp_runs, action_option_sampling=0.5)
+
+#plt.figure(figsize=(8, 8))
+#plt.plot(so_un, label='SO uniform')
+#plt.plot(so_res, label='SO')
+#plt.plot(plain_q, label='Q')
+#plt.ylim(0, 1000)
+
+#plt.legend(loc='upper left')
+#plt.xlabel("Episode")
+#plt.ylabel("Steps required to reach goal")
+#plt.savefig("compared.png")

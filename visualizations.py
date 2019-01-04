@@ -15,13 +15,14 @@ class Visualizations:
 
     def visualize_subgoals(self, subgoal_states, iteration):
 
+        plt.figure()
+
         grid_with_subgoals = copy.deepcopy(self.env.grid)
 
         for goal_state in subgoal_states:
             goal = self.env._state_to_position(goal_state)
             grid_with_subgoals[goal[0]][goal[1]] = 10
 
-        plt.clf()
         plt.title(f"Subgoal visualization iteration: {iteration}")
         plt.imshow(grid_with_subgoals)
 
@@ -31,7 +32,12 @@ class Visualizations:
         if self.save_plots:
             plt.savefig(os.path.join(self.data_dir, f"subgoals_{iteration}.png"))
 
+        plt.clf()
+        plt.close()
+
     def visualize_sr_state(self, sr, state, iteration):
+
+        plt.figure()
 
         result = np.zeros((self.env.grid_size, self.env.grid_size))
 
@@ -48,6 +54,9 @@ class Visualizations:
 
         if self.save_plots:
             plt.savefig(os.path.join(self.data_dir, f"sr_state_{state}_{iteration}.png"))
+
+        plt.clf()
+        plt.close()
 
     def _build_reward_map(self, sr):
 
@@ -73,6 +82,8 @@ class Visualizations:
 
     def visualize_candidate_subgoals(self, states, iteration):
 
+        plt.figure()
+
         # visualize all candidate subgoals
         grid_copy = copy.deepcopy(self.env.grid)
 
@@ -89,7 +100,12 @@ class Visualizations:
         if self.save_plots:
             plt.savefig(os.path.join(self.data_dir, f"candidate_subgoals_{iteration}.png"))
 
+        plt.clf()
+        plt.close()
+
     def visualize_env(self):
+
+        plt.figure()
         plt.title("Environment grid")
         plt.imshow(self.env.grid)
 
@@ -98,6 +114,9 @@ class Visualizations:
 
         if self.save_plots:
             plt.savefig(os.path.join(self.data_dir, "env.png"))
+
+        plt.clf()
+        plt.close()
 
     def visualize_policy_learning_curve(self, history):
 
@@ -111,7 +130,12 @@ class Visualizations:
         if self.save_plots:
             plt.savefig(os.path.join(self.data_dir, "learning_curve.png"))
 
+        plt.clf()
+        plt.close()
+
     def visualize_sr(self, sr):
+
+        plt.figure()
         plt.title("SR visualization")
         plt.imshow(sr)
 
@@ -120,6 +144,9 @@ class Visualizations:
 
         if self.save_plots:
             plt.savefig(os.path.join(self.data_dir, "sr.png"))
+
+        plt.clf()
+        plt.close()
 
     def visualize_subgoal_reward_map(self, sr, subgoal_state, iteration):
 
@@ -141,6 +168,9 @@ class Visualizations:
         if self.save_plots:
             plt.savefig(os.path.join(self.data_dir, f"subgoal_reward_map_{subgoal_state}_{iteration}.png"))
 
+        plt.clf()
+        plt.close()
+
     def visualize_mutliple_learning_curves(self, history):
 
         plt.figure(figsize=(5, 5))
@@ -151,6 +181,9 @@ class Visualizations:
         plt.ylim(0, 1000)
         plt.xlim(0, 100)
         plt.show()
+
+        plt.clf()
+        plt.close()
 
     def visualize_policy(self, q, start_state, goal_state, action_meaning, id):
 
@@ -190,3 +223,6 @@ class Visualizations:
 
         if self.save_plots:
             plt.savefig(os.path.join(self.data_dir, f"policy_{id}.png"))
+
+        plt.clf()
+        plt.close()
