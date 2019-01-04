@@ -3,14 +3,12 @@ from gym.spaces import Discrete
 import math
 import numpy as np
 import random
+from envs.envbase import  BaseEnv
 
 
-class MazeEnv(gym.Env):
+class MazeEnv(BaseEnv):
 
     metadata = {'render.modes': ['human']}
-
-    WALL_TILE = 1
-    FREE_TILE = 0
 
     def __init__(self):
 
@@ -62,19 +60,16 @@ class MazeEnv(gym.Env):
     def render(self, mode='human'):
         pass
 
-    def _state_to_position(self, state):
-        row = math.floor(state / self.grid_size)
-        col = state % self.grid_size
-        return row, col
+    def reset(self, start_state=None):
 
-    def _position_to_state(self, position):
-        row = position[0]
-        col = position[1]
+        if start_state is None:
+            self.position = [1, 1]
+        else:
+            self.position = self._state_to_position(start_state)
 
-        return row * self.grid_size + col
+        if self.grid[self.position[0]][self.position[1]] == self.WALL_TILE:
+            raise ValueError('starting position is a non-valid position')
 
-    def reset(self):
-        self.position = [1, 1]
         return self._position_to_state(self.position)
 
     def step(self, action):

@@ -141,7 +141,18 @@ class Visualizations:
         if self.save_plots:
             plt.savefig(os.path.join(self.data_dir, f"subgoal_reward_map_{subgoal_state}_{iteration}.png"))
 
-    def visualize_policy(self, q, subgoal_state, action_meaning, id):
+    def visualize_mutliple_learning_curves(self, history):
+
+        plt.figure(figsize=(5, 5))
+
+        for curve in history:
+            plt.plot(curve)
+
+        plt.ylim(0, 1000)
+        plt.xlim(0, 100)
+        plt.show()
+
+    def visualize_policy(self, q, start_state, goal_state, action_meaning, id):
 
         grid = copy.deepcopy(self.env.grid)
 
@@ -154,19 +165,25 @@ class Visualizations:
             position = self.env._state_to_position(state)
             policy[position[0]][position[1]] = np.argmax(action_values)
 
-        # give the subgoal state a color on the map
-        subgoal_position = self.env._state_to_position(subgoal_state)
-        grid[subgoal_position[0]][subgoal_position[1]] = 3
-
-        plt.imshow(grid)
-
         for row in range(len(policy)):
             for col in range(len(policy[0])):
 
                 if self.env.grid[row][col] != self.env.WALL_TILE:
                     plt.text(y=row, x=col, s=action_meaning[policy[row][col]], color='w', ha="center", va="center")
 
-        plt.title(f"Learned policy for {id}")
+        # give the goal state a color on the map
+        goal_position = self.env._state_to_position(goal_state)
+        grid[goal_position[0]][goal_position[1]] = 3
+        plt.text(y=goal_position[0], x=goal_position[1], s="G", color='w', ha="center", va="center")
+
+        # give the starting state also a color
+        if start_state is not None:
+            start_position = self.env._state_to_position(start_state)
+            grid[start_position[0]][start_position[1]] = 5
+
+        plt.imshow(grid)
+
+        plt.title(f"Learned policy {id}")
 
         if self.show_plots:
             plt.show()

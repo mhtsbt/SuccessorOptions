@@ -9,18 +9,18 @@ import scipy
 from sklearn.cluster import KMeans
 import os
 import shutil
+import matplotlib.pyplot as plt
 
 
 class SuccessorOptionsAgent:
 
-    def __init__(self, env_name, alpha, gamma, rollout_samples, options_count, option_learning_steps, action_option_sampling):
+    def __init__(self, env_name, alpha, gamma, rollout_samples, options_count, option_learning_steps):
         self.alpha = alpha
         self.gamma = gamma
         self.env = gym.make(env_name)
         self.rollout_samples = rollout_samples
         self.option_learning_steps = option_learning_steps
         self.options_count = options_count
-        self.action_option_sampling = action_option_sampling
         self.viz = Visualizations(env=self.env, data_dir=DATA_DIR)
 
     @staticmethod
@@ -40,6 +40,17 @@ class SuccessorOptionsAgent:
     def _log(msg):
         print(msg)
 
+    # this is used for policy visualization (a map of what each action-index means (up, down, option1, ...)
+    def get_action_meaning_smdp(self):
+
+        option_meaning = []
+
+        for i in range(self.options_count):
+            option_meaning.append("O"+str(i+1))
+
+        action_meaning = self.env._action_meaning
+        return action_meaning + option_meaning
+
     def update_sr(self, sr, state, prev_state):
 
         # a one-hot vector with all zeros except a 1 at the s-th position
@@ -58,7 +69,8 @@ class SuccessorOptionsAgent:
         return clusters
 
     # The candidate states are those states which have a moderately developed SR
-    def get_candidate_subgoals(self, sr):
+    @staticmethod
+    def get_candidate_subgoals(sr):
 
         sr_sums = np.array([sum(row) for row in sr])
 
@@ -75,10 +87,10 @@ class SuccessorOptionsAgent:
         for state, srs in enumerate(sr):
 
             if state not in canidate_subgoals:
-                # if the state is not a canidate set all distances to 1
+                # if the state is not a candidate set all distances to 1
                 distances_to_centers[state] = np.ones(shape=(len(sr_clusters)))
             else:
-                # if it is a valid canidate subgoal, calculate the distance
+                # if it is a valid candidate subgoal, calculate the distance
                 for i in range(len(sr_clusters)):
                     distances_to_centers[state][i] = scipy.spatial.distance.cosine(sr_clusters[i], srs)
 
@@ -155,10 +167,11 @@ class SuccessorOptionsAgent:
         best_future_value = np.max(q[state])
         q[prev_state][action] += lr*(reward+gamma*best_future_value-q[prev_state][action])
 
-    def run_smdp(self, option_policies, goal_state, subgoal_states, episodes):
+    def run_smdp(self, option_policies, goal_state, start_state, subgoal_states, episodes, action_option_sampling):
 
         eps = 0.1
         history = []
+        max_episode_steps = int(1e5)
 
         # prepare the SR
         new_sr = np.zeros(shape=(self.env.states_count, self.env.states_count))
@@ -169,17 +182,23 @@ class SuccessorOptionsAgent:
 
         cum_reward = 0
 
-        for _ in range(episodes):
+        for ep in range(episodes):
 
-            prev_state = self.env.reset()
+            prev_state = self.env.reset(start_state=start_state)
             episode_step = 0
 
-            while episode_step < int(1e6):
+            while True:
+
+                # stop the loop on max allowed steps
+                if episode_step > max_episode_steps:
+                    self._log(f"Failed to reach the goal (ep {ep})")
+                    history.append(episode_step)
+                    break
 
                 if random.random() < eps:
                     # do something random
 
-                    if random.random() < self.action_option_sampling:
+                    if random.random() < action_option_sampling:
                         # follow random action
                         action = random.randint(0, self.env.action_space.n - 1)
                         state, _, _, _ = self.env.step(action)
@@ -193,7 +212,7 @@ class SuccessorOptionsAgent:
                         action = option+self.env.action_space.n
                 else:
                     # greedy actions
-                    if action_option_dist == 1:
+                    if action_option_sampling == 1:
                         # only use primary actions
                         action = np.random.choice(np.flatnonzero(q[prev_state][0:self.env.action_space.n-1] == q[prev_state][0:self.env.action_space.n-1].max()))
                     else:
@@ -220,18 +239,17 @@ class SuccessorOptionsAgent:
                 self.smdp_td_update(q, state, prev_state, action, reward)
 
                 if state == goal_state:
-                    self._log(f"Found the end-goal in {episode_step} steps!")
+                    self._log(f"found the goal state in {episode_step} steps")
+
                     cum_reward += 1
                     history.append(episode_step)
                     break
 
                 prev_state = state
 
-        self._log(f"Total reward for iteration: {cum_reward}")
-
         self.viz.visualize_policy_learning_curve(history)
 
-        return q, new_sr
+        return q, new_sr, history
 
     def follow_option_policy(self, state, option_q, option_subgoal_state, update_sr=None):
 
@@ -254,18 +272,15 @@ class SuccessorOptionsAgent:
                 self.update_sr(update_sr, state, prev_state)
 
             if state == option_subgoal_state:
-                self._log("Finished using the option after "+str(steps_used)+" steps")
+                # state is the end state the option ended in, steps_used is the amount of steps it took to get there
                 return state, steps_used
 
             prev_state = state
 
-    def run(self, iterations):
+    # smdp-runs, how many times do we learn/run the smdp (starting with developed options, but with a clean SMDP q-table)
+    def run(self, iterations, action_option_sampling, smdp_runs=1):
 
         self.viz.visualize_env()
-
-        # TODO: check that this is not a wall-tile
-        # end_goal = subgoal_states[3]+2
-        end_goal = 0 # TODO
 
         initial_sr_filename = "initial_sr.npy"
 
@@ -282,6 +297,9 @@ class SuccessorOptionsAgent:
 
         self.viz.visualize_sr(sr)
 
+        # the idea is that the subgoals should be better each iteration
+        # TODO: meassure how many states can be reached from the subgoals
+        # TODO: distance between subgoals
         for iteration in range(iterations):
 
             self._log(f"=== Running iteration {iteration} ===")
@@ -292,6 +310,7 @@ class SuccessorOptionsAgent:
             # filter possible subgoal states
             canidate_subgoals = self.get_candidate_subgoals(sr)
 
+            # make a visual of all states that are valid subgoals
             self.viz.visualize_candidate_subgoals(canidate_subgoals, iteration)
 
             subgoal_states = self.get_subgoal_states(sr, sr_clusters, canidate_subgoals)
@@ -320,16 +339,29 @@ class SuccessorOptionsAgent:
 
             # visualize the learned or the loaded policies for the options
             for option_id, subgoal_state in enumerate(subgoal_states):
-                self.viz.visualize_policy(option_policies[option_id], subgoal_state, action_meaning=self.env._action_meaning, id="Option "+str(option_id+1))
+                self.viz.visualize_policy(option_policies[option_id], None, subgoal_state, action_meaning=self.env._action_meaning, id="Option "+str(option_id+1))
 
             # run the SMDP
-            end_goal = subgoal_states[3]
+            all_smdp_history = []
 
-            smdp_q, sr = self.run_smdp(option_policies=option_policies, goal_state=end_goal, subgoal_states=subgoal_states, episodes=100)
+            for run in range(smdp_runs):
 
-            # vizualize the learned policy
-            action_meaning_smdp = ["^", "<", "v", ">", "O1", "O2", "O3", "O4"] # TODO: make dynamic
-            self.viz.visualize_policy(smdp_q, end_goal, action_meaning=action_meaning_smdp, id=f"SMDP_{iteration}")
+                self._log(f"- SMDP RUN {run}")
+
+                # find a goal/start position that is not a wall
+                start_state = self.env.get_free_rand_state()
+                end_goal = self.env.get_free_rand_state()
+
+                smdp_q, sr, smdp_history = self.run_smdp(option_policies=option_policies, goal_state=end_goal, start_state=start_state, subgoal_states=subgoal_states, episodes=50, action_option_sampling=action_option_sampling)
+                all_smdp_history.append(smdp_history)
+
+                # vizualize the learned policy
+                action_meaning_smdp = self.get_action_meaning_smdp()
+                self.viz.visualize_policy(smdp_q, start_state, end_goal, action_meaning=action_meaning_smdp, id=f"SMDP_{iteration}_{run}")
+
+            # TODO: fix this in the iterative approach
+            avg_curve = np.average(np.array(all_smdp_history), axis=0)
+            return avg_curve
 
 
 # cli arguments
@@ -339,7 +371,7 @@ parser.add_argument('--gamma', default=0.95)
 parser.add_argument('--seed', default=42)
 parser.add_argument('--reset', default=False)
 parser.add_argument('--options_count', default=4)
-parser.add_argument('--iterations', default=2)
+parser.add_argument('--iterations', default=1)
 parser.add_argument('--ao_sampling', default=0.95) #  1 = more actions, 0 = more options
 parser.add_argument('--env', default="FourRoom-v0")
 parser.add_argument('--rollout_samples', default=int(5e6))
@@ -348,7 +380,7 @@ parser.add_argument('--option_learning_steps', default=int(1e6))
 
 args = parser.parse_args()
 
-DATA_DIR = os.path.join("data", f"{args.env}_{args.options_count}")
+DATA_DIR = os.path.join("data", f"{args.env}_oc{args.options_count}_alpha{args.alpha}")
 
 # set the random seed
 random.seed(args.seed)
@@ -366,7 +398,21 @@ so = SuccessorOptionsAgent(env_name=args.env,
                            gamma=args.gamma,
                            rollout_samples=args.rollout_samples,
                            options_count=args.options_count,
-                           option_learning_steps=args.option_learning_steps,
-                           action_option_sampling=args.ao_sampling)
+                           option_learning_steps=args.option_learning_steps)
 
-so.run(iterations=args.iterations)
+smdp_runs = 10
+
+plain_q = so.run(iterations=int(args.iterations), smdp_runs=smdp_runs, action_option_sampling=1)
+so_res = so.run(iterations=int(args.iterations), smdp_runs=smdp_runs, action_option_sampling=float(args.ao_sampling))
+so_un = so.run(iterations=int(args.iterations), smdp_runs=smdp_runs, action_option_sampling=0.5)
+
+plt.figure(figsize=(5, 5))
+plt.plot(so_un, label='SO UN')
+plt.plot(so_res, label='SO')
+plt.plot(plain_q, label='Q')
+plt.ylim(0, 1000)
+
+plt.legend(loc='upper left')
+plt.xlabel("Episode")
+plt.ylabel("Steps required to reach goal")
+plt.savefig("compared.png")
