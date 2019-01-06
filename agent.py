@@ -352,7 +352,7 @@ class SuccessorOptionsAgent:
                 start_state = self.env.get_free_rand_state()
                 end_goal = self.env.get_free_rand_state()
 
-                smdp_q, sr, smdp_history = self.run_smdp(option_policies=option_policies, goal_state=end_goal, start_state=start_state, subgoal_states=subgoal_states, episodes=200, action_option_sampling=action_option_sampling)
+                smdp_q, sr, smdp_history = self.run_smdp(option_policies=option_policies, goal_state=end_goal, start_state=start_state, subgoal_states=subgoal_states, episodes=5, action_option_sampling=action_option_sampling)
                 all_smdp_history.append(smdp_history)
 
                 # vizualize the learned policy
@@ -360,6 +360,7 @@ class SuccessorOptionsAgent:
                 self.viz.visualize_policy(smdp_q, start_state, end_goal, action_meaning=action_meaning_smdp, id=f"SMDP_{iteration}_{run}")
 
             # TODO: fix this in the iterative approach
+
             avg_curve = np.average(np.array(all_smdp_history), axis=0)
             return avg_curve
 
@@ -394,28 +395,14 @@ if args.reset:
     os.makedirs(DATA_DIR)
 
 so = SuccessorOptionsAgent(env_name=args.env,
-                           alpha=args.alpha,
-                           gamma=args.gamma,
+                           alpha=float(args.alpha),
+                           gamma=float(args.gamma),
                            rollout_samples=args.rollout_samples,
                            options_count=args.options_count,
                            option_learning_steps=args.option_learning_steps)
 
-smdp_runs = 500
+smdp_runs = 5
 
 learning_history = so.run(iterations=int(args.iterations), smdp_runs=smdp_runs, action_option_sampling=float(args.ao_sampling))
 
 np.save(os.path.join(DATA_DIR, "learning_history.npy"), np.array(learning_history))
-
-#so_res = so.run(iterations=int(args.iterations), smdp_runs=smdp_runs, action_option_sampling=float(args.ao_sampling))
-#so_un = so.run(iterations=int(args.iterations), smdp_runs=smdp_runs, action_option_sampling=0.5)
-
-#plt.figure(figsize=(8, 8))
-#plt.plot(so_un, label='SO uniform')
-#plt.plot(so_res, label='SO')
-#plt.plot(plain_q, label='Q')
-#plt.ylim(0, 1000)
-
-#plt.legend(loc='upper left')
-#plt.xlabel("Episode")
-#plt.ylabel("Steps required to reach goal")
-#plt.savefig("compared.png")
