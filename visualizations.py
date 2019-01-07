@@ -185,6 +185,19 @@ class Visualizations:
         plt.clf()
         plt.close()
 
+    def visualize_avg_perf(self, avg_perf_curve):
+
+        plt.plot(avg_perf_curve)
+
+        if self.show_plots:
+            plt.show()
+
+        if self.save_plots:
+            plt.savefig(os.path.join(self.data_dir, f"avg_perf.png"))
+
+        plt.clf()
+        plt.close()
+
     def visualize_policy(self, q, start_state, goal_state, action_meaning, id):
 
         grid = copy.deepcopy(self.env.grid)

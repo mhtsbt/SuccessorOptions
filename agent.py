@@ -167,11 +167,10 @@ class SuccessorOptionsAgent:
         best_future_value = np.max(q[state])
         q[prev_state][action] += lr*(reward+gamma*best_future_value-q[prev_state][action])
 
-    def run_smdp(self, option_policies, goal_state, start_state, subgoal_states, episodes, action_option_sampling):
+    # scenarios: a random selection of a start and end state
+    def run_smdp(self, option_policies, goal_state, start_state, subgoal_states, runtime_steps, action_option_sampling):
 
         eps = 0.1
-        history = []
-        max_episode_steps = int(1e6)
 
         # prepare the SR
         new_sr = np.zeros(shape=(self.env.states_count, self.env.states_count))
@@ -180,20 +179,26 @@ class SuccessorOptionsAgent:
         # this q-table also contains values for running primary actions options [prim actions][options]
         q = np.zeros(shape=(self.env.states_count, self.env.action_space.n + self.options_count))
 
-        cum_reward = 0
+        scenario_step = 0
 
-        for ep in range(episodes):
+        # the evaluation is done 200 times in equally spaced intervals
+        performance_meassurements = 200
+        performance_interval = runtime_steps/performance_meassurements
+        perf = np.zeros(shape=(performance_meassurements))
 
+        while True:
+
+            # restart from the selected start_state
             prev_state = self.env.reset(start_state=start_state)
-            episode_step = 0
 
             while True:
 
                 # stop the loop on max allowed steps
-                if episode_step > max_episode_steps:
-                    self._log(f"Failed to reach the goal (ep {ep})")
-                    history.append(episode_step)
-                    break
+                if scenario_step > runtime_steps:
+                    #self._log(f"Failed to reach the goal in scenario {scenario_id}")
+                    #history.append(scenario_step)
+                    # scenario is completed
+                    return q, new_sr, perf
 
                 if random.random() < eps:
                     # do something random
@@ -202,13 +207,13 @@ class SuccessorOptionsAgent:
                         # follow random action
                         action = random.randint(0, self.env.action_space.n - 1)
                         state, _, _, _ = self.env.step(action)
-                        episode_step += 1
+                        scenario_step += 1
                         self.update_sr(sr=new_sr, state=state, prev_state=prev_state)
                     else:
                         # follow random option
                         option = random.randint(0, self.options_count-1)
                         state, steps_used = self.follow_option_policy(prev_state, option_q=option_policies[option], option_subgoal_state=subgoal_states[option])
-                        episode_step += steps_used
+                        scenario_step += steps_used
                         action = option+self.env.action_space.n
                 else:
                     # greedy actions
@@ -223,12 +228,12 @@ class SuccessorOptionsAgent:
                         # use option
                         option = action-self.env.action_space.n
                         state, steps_used = self.follow_option_policy(prev_state, option_q=option_policies[option], option_subgoal_state=subgoal_states[option], update_sr=new_sr)
-                        episode_step += steps_used
+                        scenario_step += steps_used
                     else:
                         # use primary action
                         state, _, _, _ = self.env.step(action)
                         self.update_sr(sr=new_sr, state=state, prev_state=prev_state)
-                        episode_step += 1
+                        scenario_step += 1
 
                 # TD-update
                 if state == goal_state:
@@ -239,17 +244,15 @@ class SuccessorOptionsAgent:
                 self.smdp_td_update(q, state, prev_state, action, reward)
 
                 if state == goal_state:
-                    self._log(f"found the goal state in {episode_step} steps")
+                    # found the goal state
 
-                    cum_reward += 1
-                    history.append(episode_step)
+                    # select the correct performance interval to increase the cum reward of
+                    current_perf_interval = int(np.floor(scenario_step / performance_interval))
+                    perf[current_perf_interval] += 1
+
                     break
 
                 prev_state = state
-
-        self.viz.visualize_policy_learning_curve(history)
-
-        return q, new_sr, history
 
     def follow_option_policy(self, state, option_q, option_subgoal_state, update_sr=None):
 
@@ -278,7 +281,7 @@ class SuccessorOptionsAgent:
             prev_state = state
 
     # smdp-runs, how many times do we learn/run the smdp (starting with developed options, but with a clean SMDP q-table)
-    def run(self, iterations, action_option_sampling, smdp_runs=1):
+    def run(self, iterations, action_option_sampling, scenarios):
 
         self.viz.visualize_env()
 
@@ -342,26 +345,27 @@ class SuccessorOptionsAgent:
                 self.viz.visualize_policy(option_policies[option_id], None, subgoal_state, action_meaning=self.env._action_meaning, id="Option "+str(option_id+1))
 
             # run the SMDP
-            all_smdp_history = []
+            all_scenario_history = []
 
-            for run in range(smdp_runs):
+            for scenario_id in range(scenarios):
 
-                self._log(f"- SMDP RUN {run}")
+                self._log(f"- SCENARIO {scenario_id}")
 
                 # find a goal/start position that is not a wall
                 start_state = self.env.get_free_rand_state()
                 end_goal = self.env.get_free_rand_state()
 
-                smdp_q, sr, smdp_history = self.run_smdp(option_policies=option_policies, goal_state=end_goal, start_state=start_state, subgoal_states=subgoal_states, episodes=5, action_option_sampling=action_option_sampling)
-                all_smdp_history.append(smdp_history)
+                smdp_q, sr, perf = self.run_smdp(option_policies=option_policies, goal_state=end_goal, start_state=start_state, subgoal_states=subgoal_states, runtime_steps=int(5e5), action_option_sampling=action_option_sampling)
+
+                all_scenario_history.append(perf)
 
                 # vizualize the learned policy
                 action_meaning_smdp = self.get_action_meaning_smdp()
-                self.viz.visualize_policy(smdp_q, start_state, end_goal, action_meaning=action_meaning_smdp, id=f"SMDP_{iteration}_{run}")
+                self.viz.visualize_policy(smdp_q, start_state, end_goal, action_meaning=action_meaning_smdp, id=f"SMDP_{iteration}_{scenario_id}")
 
             # TODO: fix this in the iterative approach
 
-            avg_curve = np.average(np.array(all_smdp_history), axis=0)
+            avg_curve = np.average(np.array(all_scenario_history), axis=0)
             return avg_curve
 
 
@@ -373,6 +377,7 @@ parser.add_argument('--seed', default=42)
 parser.add_argument('--reset', default=False)
 parser.add_argument('--options_count', default=4)
 parser.add_argument('--iterations', default=1)
+parser.add_argument('--scenarios', default=100)
 parser.add_argument('--ao_sampling', default=0.95) #  1 = more actions, 0 = more options
 parser.add_argument('--env', default="FourRoom-v0")
 parser.add_argument('--rollout_samples', default=int(5e6))
@@ -401,8 +406,10 @@ so = SuccessorOptionsAgent(env_name=args.env,
                            options_count=args.options_count,
                            option_learning_steps=args.option_learning_steps)
 
-smdp_runs = 5
 
-learning_history = so.run(iterations=int(args.iterations), smdp_runs=smdp_runs, action_option_sampling=float(args.ao_sampling))
+avg_perf = so.run(iterations=int(args.iterations), scenarios=int(args.scenarios), action_option_sampling=float(args.ao_sampling))
 
-np.save(os.path.join(DATA_DIR, "learning_history.npy"), np.array(learning_history))
+so.viz.visualize_avg_perf(avg_perf)
+
+np.save(os.path.join(DATA_DIR, "avg_perf.npy"), np.array(avg_perf))
+
