@@ -9,3 +9,8 @@ register(
     id='Maze-v0',
     entry_point='envs.maze:MazeEnv'
 )
+
+register(
+    id='PaperMaze-v0',
+    entry_point='envs.papermaze:PaperMazeEnv'
+)

@@ -129,7 +129,7 @@ class SuccessorOptionsAgent:
         # initialize all Q-values to zero
         q = np.zeros((self.env.states_count, self.env.action_space.n))
 
-        prev_state = self.env.reset()
+        prev_state = self.env.reset(start_state=self.env.get_free_rand_state())
 
         for _ in tqdm(range(steps)):
 
@@ -194,7 +194,7 @@ class SuccessorOptionsAgent:
             while True:
 
                 # stop the loop on max allowed steps
-                if scenario_step > runtime_steps:
+                if scenario_step >= runtime_steps:
                     #self._log(f"Failed to reach the goal in scenario {scenario_id}")
                     #history.append(scenario_step)
                     # scenario is completed
@@ -248,7 +248,8 @@ class SuccessorOptionsAgent:
 
                     # select the correct performance interval to increase the cum reward of
                     current_perf_interval = int(np.floor(scenario_step / performance_interval))
-                    perf[current_perf_interval] += 1
+                    if current_perf_interval < performance_meassurements:
+                        perf[current_perf_interval] += 1
 
                     break
 
@@ -301,8 +302,6 @@ class SuccessorOptionsAgent:
         self.viz.visualize_sr(sr)
 
         # the idea is that the subgoals should be better each iteration
-        # TODO: meassure how many states can be reached from the subgoals
-        # TODO: distance between subgoals
         for iteration in range(iterations):
 
             self._log(f"=== Running iteration {iteration} ===")
@@ -363,10 +362,8 @@ class SuccessorOptionsAgent:
                 action_meaning_smdp = self.get_action_meaning_smdp()
                 self.viz.visualize_policy(smdp_q, start_state, end_goal, action_meaning=action_meaning_smdp, id=f"SMDP_{iteration}_{scenario_id}")
 
-            # TODO: fix this in the iterative approach
-
-            avg_curve = np.average(np.array(all_scenario_history), axis=0)
-            return avg_curve
+        avg_curve = np.average(np.array(all_scenario_history), axis=0)
+        return avg_curve
 
 
 # cli arguments
@@ -377,7 +374,7 @@ parser.add_argument('--seed', default=42)
 parser.add_argument('--reset', default=False)
 parser.add_argument('--options_count', default=4)
 parser.add_argument('--iterations', default=1)
-parser.add_argument('--scenarios', default=100)
+parser.add_argument('--scenarios', default=10) # should be 100
 parser.add_argument('--ao_sampling', default=0.95) #  1 = more actions, 0 = more options
 parser.add_argument('--env', default="FourRoom-v0")
 parser.add_argument('--rollout_samples', default=int(5e6))
@@ -402,9 +399,9 @@ if args.reset:
 so = SuccessorOptionsAgent(env_name=args.env,
                            alpha=float(args.alpha),
                            gamma=float(args.gamma),
-                           rollout_samples=args.rollout_samples,
-                           options_count=args.options_count,
-                           option_learning_steps=args.option_learning_steps)
+                           rollout_samples=int(args.rollout_samples),
+                           options_count=int(args.options_count),
+                           option_learning_steps=int(args.option_learning_steps))
 
 
 avg_perf = so.run(iterations=int(args.iterations), scenarios=int(args.scenarios), action_option_sampling=float(args.ao_sampling))
