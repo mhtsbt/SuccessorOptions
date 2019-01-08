@@ -62,7 +62,7 @@ class PaperMazeEnv(BaseEnv):
     def reset(self, start_state=None):
 
         if start_state is None:
-            self.position = [1, 1]
+            self.position = [26, 1]
         else:
             self.position = self._state_to_position(start_state)
 

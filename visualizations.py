@@ -35,7 +35,7 @@ class Visualizations:
         plt.clf()
         plt.close()
 
-    def visualize_sr_state(self, sr, state, iteration):
+    def visualize_sr_state(self, sr, viz_state, iteration):
 
         plt.figure()
 
@@ -46,14 +46,14 @@ class Visualizations:
             result[position[0]][position[1]] = value
 
         plt.figure(figsize=(self.env.grid_size / 2, self.env.grid_size / 2))
-        plt.title(f"SR for state {state} iteration {iteration}")
+        plt.title(f"SR for state {viz_state} iteration {iteration}")
         plt.imshow(result)
 
         if self.show_plots:
             plt.show()
 
         if self.save_plots:
-            plt.savefig(os.path.join(self.data_dir, f"sr_state_{state}_{iteration}.png"))
+            plt.savefig(os.path.join(self.data_dir, f"sr_state_{viz_state}_{iteration}.png"))
 
         plt.clf()
         plt.close()

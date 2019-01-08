@@ -9,18 +9,18 @@ import scipy
 from sklearn.cluster import KMeans
 import os
 import shutil
-import matplotlib.pyplot as plt
 
 
 class SuccessorOptionsAgent:
 
-    def __init__(self, env_name, alpha, gamma, rollout_samples, options_count, option_learning_steps):
+    def __init__(self, env_name, alpha, gamma, rollout_samples, options_count, option_learning_steps, clustering):
         self.alpha = alpha
         self.gamma = gamma
         self.env = gym.make(env_name)
         self.rollout_samples = rollout_samples
         self.option_learning_steps = option_learning_steps
         self.options_count = options_count
+        self.clustering = clustering
         self.viz = Visualizations(env=self.env, data_dir=DATA_DIR)
 
     @staticmethod
@@ -63,18 +63,24 @@ class SuccessorOptionsAgent:
         return sr
 
     def cluster_sr(self, sr):
-        kmeans = KMeans(n_clusters=self.options_count, random_state=0).fit(sr)
-        clusters = kmeans.cluster_centers_
+
+        if self.clustering == "kmeansplus":
+            kmeansplus = KMeans(n_clusters=self.options_count, init="k-means++", random_state=0).fit(sr)
+            clusters = kmeansplus.cluster_centers_
+        elif self.clustering == "kmeans":
+            kmeans = KMeans(n_clusters=self.options_count, init="random", random_state=0).fit(sr)
+            clusters = kmeans.cluster_centers_
+
+            # TODO: add kmedoids??
 
         return clusters
 
     # The candidate states are those states which have a moderately developed SR
-    @staticmethod
-    def get_candidate_subgoals(sr):
+    def get_candidate_subgoals(self, sr):
 
         sr_sums = np.array([sum(row) for row in sr])
 
-        sr_max, sr_min = np.percentile(sr_sums, [75, 25])
+        sr_max, sr_min = np.percentile(sr_sums.nonzero(), [75, 25])
         valid_states = np.argwhere((sr_sums > sr_min) & (sr_sums < sr_max))
 
         return valid_states.reshape(len(valid_states))
@@ -86,13 +92,14 @@ class SuccessorOptionsAgent:
         distances_to_centers = np.zeros((self.env.states_count, len(sr_clusters)))
         for state, srs in enumerate(sr):
 
-            if state not in canidate_subgoals:
+            #if state not in canidate_subgoals:
                 # if the state is not a candidate set all distances to 1
-                distances_to_centers[state] = np.ones(shape=(len(sr_clusters)))
-            else:
+                #distances_to_centers[state] = np.ones(shape=(len(sr_clusters)))
+
+            #else:
                 # if it is a valid candidate subgoal, calculate the distance
-                for i in range(len(sr_clusters)):
-                    distances_to_centers[state][i] = scipy.spatial.distance.cosine(sr_clusters[i], srs)
+            for i in range(len(sr_clusters)):
+                distances_to_centers[state][i] = scipy.spatial.distance.cosine(sr_clusters[i], srs)
 
         for i in range(len(sr_clusters)):
             state = np.nanargmin(distances_to_centers[:, i])
@@ -168,7 +175,7 @@ class SuccessorOptionsAgent:
         q[prev_state][action] += lr*(reward+gamma*best_future_value-q[prev_state][action])
 
     # scenarios: a random selection of a start and end state
-    def run_smdp(self, option_policies, goal_state, start_state, subgoal_states, runtime_steps, action_option_sampling):
+    def run_scenario(self, option_policies, goal_state, start_state, subgoal_states, runtime_steps, action_option_sampling):
 
         eps = 0.1
 
@@ -354,7 +361,7 @@ class SuccessorOptionsAgent:
                 start_state = self.env.get_free_rand_state()
                 end_goal = self.env.get_free_rand_state()
 
-                smdp_q, sr, perf = self.run_smdp(option_policies=option_policies, goal_state=end_goal, start_state=start_state, subgoal_states=subgoal_states, runtime_steps=int(5e5), action_option_sampling=action_option_sampling)
+                smdp_q, sr, perf = self.run_scenario(option_policies=option_policies, goal_state=end_goal, start_state=start_state, subgoal_states=subgoal_states, runtime_steps=int(5e5), action_option_sampling=action_option_sampling)
 
                 all_scenario_history.append(perf)
 
@@ -368,13 +375,14 @@ class SuccessorOptionsAgent:
 
 # cli arguments
 parser = argparse.ArgumentParser(description='')
-parser.add_argument('--alpha', default=0.1)
-parser.add_argument('--gamma', default=0.95)
-parser.add_argument('--seed', default=42)
+parser.add_argument('--alpha', default=0.0025)
+parser.add_argument('--gamma', default=0.99)
+parser.add_argument('--seed', default=12)
+parser.add_argument('--clustering', default="kmeansplus")
 parser.add_argument('--reset', default=False)
 parser.add_argument('--options_count', default=4)
 parser.add_argument('--iterations', default=1)
-parser.add_argument('--scenarios', default=10) # should be 100
+parser.add_argument('--scenarios', default=100)
 parser.add_argument('--ao_sampling', default=0.95) #  1 = more actions, 0 = more options
 parser.add_argument('--env', default="FourRoom-v0")
 parser.add_argument('--rollout_samples', default=int(5e6))
@@ -383,7 +391,7 @@ parser.add_argument('--option_learning_steps', default=int(1e6))
 
 args = parser.parse_args()
 
-DATA_DIR = os.path.join("data", f"{args.env}_oc{args.options_count}_alpha{args.alpha}_oa{args.ao_sampling}")
+DATA_DIR = os.path.join("data", f"{args.env}_oc{args.options_count}_{args.clustering}_alpha{args.alpha}_oa{args.ao_sampling}")
 
 # set the random seed
 random.seed(args.seed)
@@ -401,6 +409,7 @@ so = SuccessorOptionsAgent(env_name=args.env,
                            gamma=float(args.gamma),
                            rollout_samples=int(args.rollout_samples),
                            options_count=int(args.options_count),
+                           clustering=args.clustering,
                            option_learning_steps=int(args.option_learning_steps))
 
 
