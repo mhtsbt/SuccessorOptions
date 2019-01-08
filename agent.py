@@ -231,7 +231,7 @@ class SuccessorOptionsAgent:
                         # use both action and options
                         action = np.random.choice(np.flatnonzero(q[prev_state] == q[prev_state].max()))
 
-                    if action >= self.options_count:
+                    if action >= self.env.action_space.n:
                         # use option
                         option = action-self.env.action_space.n
                         state, steps_used = self.follow_option_policy(prev_state, option_q=option_policies[option], option_subgoal_state=subgoal_states[option], update_sr=new_sr)
