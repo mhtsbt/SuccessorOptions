@@ -391,7 +391,7 @@ parser.add_argument('--option_learning_steps', default=int(1e6))
 
 args = parser.parse_args()
 
-DATA_DIR = os.path.join("data", f"{args.env}_oc{args.options_count}_{args.clustering}_alpha{args.alpha}_oa{args.ao_sampling}")
+DATA_DIR = os.path.join("data", f"{args.env}_oc{args.options_count}_{args.clustering}_alpha{args.alpha}_oa{args.ao_sampling}_iter{args.iterations}_{args.seed}")
 
 # set the random seed
 random.seed(args.seed)
