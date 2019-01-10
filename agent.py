@@ -136,7 +136,7 @@ class SuccessorOptionsAgent:
         # initialize all Q-values to zero
         q = np.zeros((self.env.states_count, self.env.action_space.n))
 
-        prev_state = self.env.reset(start_state=self.env.get_free_rand_state())
+        prev_state = self.env.reset()
 
         for _ in tqdm(range(steps)):
 
