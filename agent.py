@@ -352,7 +352,7 @@ class SuccessorOptionsAgent:
             start_state = self.env.get_free_rand_state()
             end_goal = self.env.get_free_rand_state()
 
-            smdp_q, perf = self.run_scenario(option_policies=option_policies, goal_state=end_goal, start_state=start_state, subgoal_states=subgoal_states, runtime_steps=int(5e5), action_option_sampling=action_option_sampling)
+            smdp_q, perf = self.run_scenario(option_policies=option_policies, goal_state=end_goal, start_state=start_state, subgoal_states=subgoal_states, runtime_steps=int(5e5))
 
             all_scenario_history.append(perf)
 
