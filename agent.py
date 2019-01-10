@@ -202,8 +202,6 @@ class SuccessorOptionsAgent:
 
                 # stop the loop on max allowed steps
                 if scenario_step >= runtime_steps:
-                    #self._log(f"Failed to reach the goal in scenario {scenario_id}")
-                    #history.append(scenario_step)
                     # scenario is completed
                     return q, new_sr, perf
 
