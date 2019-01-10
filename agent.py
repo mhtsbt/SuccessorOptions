@@ -13,7 +13,7 @@ import shutil
 
 class SuccessorOptionsAgent:
 
-    def __init__(self, env_name, alpha, gamma, rollout_samples, options_count, option_learning_steps, clustering):
+    def __init__(self, env_name, alpha, gamma, rollout_samples, options_count, option_learning_steps, clustering, action_option_sampling):
         self.alpha = alpha
         self.gamma = gamma
         self.env = gym.make(env_name)
@@ -21,6 +21,7 @@ class SuccessorOptionsAgent:
         self.option_learning_steps = option_learning_steps
         self.options_count = options_count
         self.clustering = clustering
+        self.action_option_sampling = action_option_sampling
         self.viz = Visualizations(env=self.env, data_dir=DATA_DIR)
 
     @staticmethod
@@ -92,12 +93,7 @@ class SuccessorOptionsAgent:
         distances_to_centers = np.zeros((self.env.states_count, len(sr_clusters)))
         for state, srs in enumerate(sr):
 
-            #if state not in canidate_subgoals:
-                # if the state is not a candidate set all distances to 1
-                #distances_to_centers[state] = np.ones(shape=(len(sr_clusters)))
-
-            #else:
-                # if it is a valid candidate subgoal, calculate the distance
+            # calculate the distance
             for i in range(len(sr_clusters)):
                 distances_to_centers[state][i] = scipy.spatial.distance.cosine(sr_clusters[i], srs)
 
@@ -107,22 +103,31 @@ class SuccessorOptionsAgent:
 
         return subgoals_states
 
-    def run_random_policy(self, steps):
+    def run_random_policy(self, steps, option_policies, subgoal_states):
 
         new_sr = np.zeros(shape=(self.env.states_count, self.env.states_count))
 
         # go back to the starting position
         prev_state = self.env.reset()
+        step = 0
 
-        for _ in tqdm(range(steps)):
+        while step < steps:
 
-            # take an action in the environment
-            action = random.randint(0, 3)
-            state, _, _, _ = self.env.step(action)
+            if random.random() < self.action_option_sampling or option_policies is None:
+
+                # take an action in the environment
+                action = random.randint(0, 3)
+                state, _, _, _ = self.env.step(action)
+                step += 1
+
+            else:
+                # take a random option
+                option_id = random.randint(0, self.options_count-1)
+                state, steps_used = self.follow_option_policy(state=state, option_q=option_policies[option_id], option_subgoal_state=subgoal_states[option_id])
+                step += steps_used
 
             # update the SR in a TD-style
             new_sr = self.update_sr(new_sr, state, prev_state)
-
             prev_state = state
 
         return new_sr
@@ -175,12 +180,9 @@ class SuccessorOptionsAgent:
         q[prev_state][action] += lr*(reward+gamma*best_future_value-q[prev_state][action])
 
     # scenarios: a random selection of a start and end state
-    def run_scenario(self, option_policies, goal_state, start_state, subgoal_states, runtime_steps, action_option_sampling):
+    def run_scenario(self, option_policies, goal_state, start_state, subgoal_states, runtime_steps):
 
         eps = 0.1
-
-        # prepare the SR
-        new_sr = np.zeros(shape=(self.env.states_count, self.env.states_count))
 
         # learn option-policies that lead to the subgoal-states
         # this q-table also contains values for running primary actions options [prim actions][options]
@@ -203,17 +205,16 @@ class SuccessorOptionsAgent:
                 # stop the loop on max allowed steps
                 if scenario_step >= runtime_steps:
                     # scenario is completed
-                    return q, new_sr, perf
+                    return q, perf
 
                 if random.random() < eps:
                     # do something random
 
-                    if random.random() < action_option_sampling:
+                    if random.random() < self.action_option_sampling:
                         # follow random action
                         action = random.randint(0, self.env.action_space.n - 1)
                         state, _, _, _ = self.env.step(action)
                         scenario_step += 1
-                        self.update_sr(sr=new_sr, state=state, prev_state=prev_state)
                     else:
                         # follow random option
                         option = random.randint(0, self.options_count-1)
@@ -222,7 +223,7 @@ class SuccessorOptionsAgent:
                         action = option+self.env.action_space.n
                 else:
                     # greedy actions
-                    if action_option_sampling == 1:
+                    if self.action_option_sampling == 1:
                         # only use primary actions
                         action = np.random.choice(np.flatnonzero(q[prev_state][0:self.env.action_space.n-1] == q[prev_state][0:self.env.action_space.n-1].max()))
                     else:
@@ -232,12 +233,11 @@ class SuccessorOptionsAgent:
                     if action >= self.env.action_space.n:
                         # use option
                         option = action-self.env.action_space.n
-                        state, steps_used = self.follow_option_policy(prev_state, option_q=option_policies[option], option_subgoal_state=subgoal_states[option], update_sr=new_sr)
+                        state, steps_used = self.follow_option_policy(prev_state, option_q=option_policies[option], option_subgoal_state=subgoal_states[option])
                         scenario_step += steps_used
                     else:
                         # use primary action
                         state, _, _, _ = self.env.step(action)
-                        self.update_sr(sr=new_sr, state=state, prev_state=prev_state)
                         scenario_step += 1
 
                 # TD-update
@@ -260,11 +260,10 @@ class SuccessorOptionsAgent:
 
                 prev_state = state
 
-    def follow_option_policy(self, state, option_q, option_subgoal_state, update_sr=None):
+    def follow_option_policy(self, state, option_q, option_subgoal_state):
 
         eps = 0.1
         steps_used = 0
-        prev_state = state
 
         while True:
             if random.random() < eps:
@@ -276,40 +275,33 @@ class SuccessorOptionsAgent:
             state, _, _, _ = self.env.step(action=action)
             steps_used += 1
 
-            if update_sr is not None:
-                # update the SR for the incremental updating
-                self.update_sr(update_sr, state, prev_state)
-
             if state == option_subgoal_state:
                 # state is the end state the option ended in, steps_used is the amount of steps it took to get there
                 return state, steps_used
 
-            prev_state = state
-
-    # smdp-runs, how many times do we learn/run the smdp (starting with developed options, but with a clean SMDP q-table)
-    def run(self, iterations, action_option_sampling, scenarios):
+    def run(self, iterations, scenarios):
 
         self.viz.visualize_env()
-
-        initial_sr_filename = "initial_sr.npy"
-
-        # first time get some random samples from the environment
-        # if we did this before, re-use the SR
-        sr = self._load_array(initial_sr_filename)
-
-        if sr is None:
-            # run the policy (completely random) for the first time
-            sr = self.run_random_policy(steps=self.rollout_samples)
-
-            # save the result, so next time no need to do this again
-            self._save_array(sr, initial_sr_filename)
-
-        self.viz.visualize_sr(sr)
+        option_policies = None
+        subgoal_states = None
 
         # the idea is that the subgoals should be better each iteration
         for iteration in range(iterations):
 
             self._log(f"=== Running iteration {iteration} ===")
+
+            sr_filename = f"sr_{iteration}.npy"
+
+            # first time get some random samples from the environment
+            # if we did this before, re-use the SR
+            sr = self._load_array(sr_filename)
+
+            if sr is None:
+                # run the policy (completely random) for the first time
+                sr = self.run_random_policy(steps=self.rollout_samples, option_policies=option_policies, subgoal_states=subgoal_states)
+
+                # save the result, so next time no need to do this again
+                self._save_array(sr, sr_filename)
 
             # do the clustering, to find the subgoals
             sr_clusters = self.cluster_sr(sr)
@@ -333,6 +325,7 @@ class SuccessorOptionsAgent:
             option_policies_filename = f"option_policies_{iteration}.npy"
             option_policies = self._load_array(option_policies_filename)
 
+            # no previously trained policies could be found
             if option_policies is None:
 
                 option_policies = []
@@ -348,24 +341,24 @@ class SuccessorOptionsAgent:
             for option_id, subgoal_state in enumerate(subgoal_states):
                 self.viz.visualize_policy(option_policies[option_id], None, subgoal_state, action_meaning=self.env._action_meaning, id="Option "+str(option_id+1))
 
-            # run the SMDP
-            all_scenario_history = []
+        # run the scenarios
+        all_scenario_history = []
 
-            for scenario_id in range(scenarios):
+        for scenario_id in range(scenarios):
 
-                self._log(f"- SCENARIO {scenario_id}")
+            self._log(f"- SCENARIO {scenario_id}")
 
-                # find a goal/start position that is not a wall
-                start_state = self.env.get_free_rand_state()
-                end_goal = self.env.get_free_rand_state()
+            # find a goal/start position that is not a wall
+            start_state = self.env.get_free_rand_state()
+            end_goal = self.env.get_free_rand_state()
 
-                smdp_q, sr, perf = self.run_scenario(option_policies=option_policies, goal_state=end_goal, start_state=start_state, subgoal_states=subgoal_states, runtime_steps=int(5e5), action_option_sampling=action_option_sampling)
+            smdp_q, perf = self.run_scenario(option_policies=option_policies, goal_state=end_goal, start_state=start_state, subgoal_states=subgoal_states, runtime_steps=int(5e5), action_option_sampling=action_option_sampling)
 
-                all_scenario_history.append(perf)
+            all_scenario_history.append(perf)
 
-                # vizualize the learned policy
-                action_meaning_smdp = self.get_action_meaning_smdp()
-                self.viz.visualize_policy(smdp_q, start_state, end_goal, action_meaning=action_meaning_smdp, id=f"SMDP_{iteration}_{scenario_id}")
+            # vizualize the learned policy
+            action_meaning_smdp = self.get_action_meaning_smdp()
+            self.viz.visualize_policy(smdp_q, start_state, end_goal, action_meaning=action_meaning_smdp, id=f"scenario_{scenario_id}")
 
         avg_curve = np.average(np.array(all_scenario_history), axis=0)
         return avg_curve
@@ -408,10 +401,11 @@ so = SuccessorOptionsAgent(env_name=args.env,
                            rollout_samples=int(args.rollout_samples),
                            options_count=int(args.options_count),
                            clustering=args.clustering,
-                           option_learning_steps=int(args.option_learning_steps))
+                           option_learning_steps=int(args.option_learning_steps),
+                           action_option_sampling=float(args.ao_sampling))
 
 
-avg_perf = so.run(iterations=int(args.iterations), scenarios=int(args.scenarios), action_option_sampling=float(args.ao_sampling))
+avg_perf = so.run(iterations=int(args.iterations), scenarios=int(args.scenarios))
 
 so.viz.visualize_avg_perf(avg_perf)
 
