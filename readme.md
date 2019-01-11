@@ -1,4 +1,2 @@
-# TODO
-* [ ] Create requirements file with all dependencies
-
-https://github.com/reproducibility-challenge/iclr_2019#submission-instructions
+# SuccessorOptions
+This repository contains a reproducability effort for the following paper: https://openreview.net/pdf?id=Byxr73R5FQ
